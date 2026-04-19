@@ -1,0 +1,37 @@
+name: Gold Price Monitor
+
+on:
+  schedule:
+    - cron: '*/10 * * * 1-5'   # every 10 min, Mon-Fri
+  workflow_dispatch:             # manual test run
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Restore alert state (anti-spam)
+        uses: actions/cache/restore@v4
+        with:
+          path: alert_state.json
+          key: gold-state-${{ github.run_id }}
+          restore-keys: gold-state-
+
+      - name: Check XAU/USD price and send alerts
+        run: python system/check_gold_alert.py
+        env:
+          TG_TOKEN:    ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID:  ${{ secrets.TG_CHAT_ID }}
+          THRESHOLD_1: '1.5'
+          THRESHOLD_2: '2.5'
+
+      - name: Save alert state
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: alert_state.json
+          key: gold-state-${{ github.run_id }}
+
