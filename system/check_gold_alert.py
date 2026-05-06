@@ -1,10 +1,6 @@
 """
 Gold price alert — запускається GitHub Actions кожні 10 хв (пн-пт).
-Надсилає алерти в Telegram при різких рухах XAU/USD.
-
-Рівні:
-  ⚠️  THRESHOLD_1 (default 1.5%) — помітний рус
-  🔴  THRESHOLD_2 (default 2.5%) — сильний рух
+Надсилає алерти в Telegram при русі XAU/USD від 0.5%.
 
 Стан (які алерти вже надіслані сьогодні) зберігається через GitHub Actions cache.
 """
@@ -17,11 +13,10 @@ import sys
 from datetime import datetime, date, timezone
 
 # ── Конфіг (з GitHub Secrets / env vars) ─────────────────
-TG_TOKEN    = os.environ.get("TG_TOKEN", "")
-TG_CHAT_ID  = os.environ.get("TG_CHAT_ID", "")
-THRESHOLD_1 = float(os.environ.get("THRESHOLD_1", "1.5"))  # ⚠️
-THRESHOLD_2 = float(os.environ.get("THRESHOLD_2", "2.5"))  # 🔴
-STATE_FILE  = "alert_state.json"
+TG_TOKEN   = os.environ.get("TG_TOKEN", "")
+TG_CHAT_ID = os.environ.get("TG_CHAT_ID", "")
+THRESHOLD  = float(os.environ.get("THRESHOLD_1", "0.5"))  # рух (%)
+STATE_FILE = "alert_state.json"
 
 
 # ── Ціна XAU/USD (Yahoo Finance) ─────────────────────────
@@ -58,11 +53,9 @@ def load_state():
         if s.get("date") == today:
             return s
     return {
-        "date":   today,
-        "up_1":   False,   # ⚠️ +1.5%
-        "up_2":   False,   # 🔴 +2.5%
-        "down_1": False,   # ⚠️ -1.5%
-        "down_2": False,   # 🔴 -2.5%
+        "date": today,
+        "up":   False,   # +0.5%
+        "down": False,   # -0.5%
     }
 
 
@@ -93,63 +86,35 @@ def main():
 
     state = load_state()
 
-    # ── 🔴 Сильний рух вгору ─────────────────────────────
-    if change >= THRESHOLD_2 and not state["up_2"]:
+    # ── 📈 Рух вгору ─────────────────────────────────────
+    if change >= THRESHOLD and not state["up"]:
         send_tg(
-            f"🔴 <b>XAU/USD — Сильний рух вгору!</b>\n\n"
+            f"📈 <b>XAU/USD — Рух вгору {sign}{change:.2f}%</b>\n\n"
             f"💰 Ціна: <b>${price:,.2f}</b>\n"
-            f"📈 Зміна за день: <b>{sign}{change:.2f}%</b>  ({delta_s})\n"
-            f"↕️ Вчора �а закрив: ${prev:,.2f}\n\n"
-            f"⏰ {now_utc}"
-        )
-        state["up_2"] = True
-        state["up_1"] = True
-        print(f"✅ Надіслано 🔴 вгору ({sign}{change:.2f}%)")
-
-    # ── 🔴 Сильний рух вниз ──────────────────────────────
-    elif change <= -THRESHOLD_2 and not state["down_2"]:
-        send_tg(
-            f"🔴 <b>XAU/USD — Сильний рух вниз!</b>\n\n"
-            f"💰  Ціна: <b>${price:,.2f}</b>\n"
-            f"📉 Зміна за день: <b>{sign}{change:.2f}%</b>  ({delta_s})\n"
+            f"📊 Зміна за день: <b>{sign}{change:.2f}%</b>  ({delta_s})\n"
             f"↕️ Вчора закрив: ${prev:,.2f}\n\n"
             f"⏰ {now_utc}"
         )
-        state["down_2"] = True
-        state["down_1"] = True
-        print(f"✅ Надіслано 🔴 вниз ({sign}{change:.2f}%)")
+        state["up"] = True
+        print(f"✅ Надіслано 📈 вгору ({sign}{change:.2f}%)")
 
-    # ── ⚠️ Помітний рух вгору ────────────────────────────
-    elif change >= THRESHOLD_1 and not state["up_1"]:
+    # ── 📉 Рух вниз ──────────────────────────────────────
+    elif change <= -THRESHOLD and not state["down"]:
         send_tg(
-            f"⚠️ <b>XAU/USD — Помітний рух вгору</b>\n\n"
+            f"📉 <b>XAU/USD — Рух вниз {sign}{change:.2f}%</b>\n\n"
             f"💰 Ціна: <b>${price:,.2f}</b>\n"
-            f"📈 Зміна за день: <b>{sign}{change:.2f}%</b>  ({delta_s})\n"
+            f"📊 Зміна за день: <b>{sign}{change:.2f}%</b>  ({delta_s})\n"
             f"↕️ Вчора закрив: ${prev:,.2f}\n\n"
             f"⏰ {now_utc}"
         )
-        state["up_1"] = True
-        print(f"✅ Надіслано ⚠️ вгору ({sign}{change:.2f}%)")
-
-    # ── ⚠️ Помітний рух вниз ─────────────────────────────
-    elif change <= -THRESHOLD_1 and not state["down_1"]:
-        send_tg(
-            f"⚠️ <b>XAU/USD — Помітний рух вниз</b>\n\n"
-            f"💰 Ціна: <b>${price:,.2f}</b>\n"
-            f"📉 Зміна за день: <b>{sign}{change:.2f}%</b>  ({delta_s})\n"
-            f"↕️ Вчора закрив: ${prev:,.2f}\n\n"
-            f"⏰ {now_utc}"
-        )
-        state["down_1"] = True
-        print(f"✅ Надіслано ⚠️ вниз ({sign}{change:.2f}%)")
+        state["down"] = True
+        print(f"✅ Надіслано 📉 вниз ({sign}{change:.2f}%)")
 
     else:
-        print(f"ℹ️  Без алерту — поріг не досягнутп "
-              f"(⚠️ {THRESHOLD_1}% / 🔴 {THRESHOLD_2}%)")
+        print(f"ℹ️  Без алерту — поріг не досягнуто ({THRESHOLD}%)")
 
     save_state(state)
 
 
 if __name__ == "__main__":
     main()
-
